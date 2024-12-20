@@ -1,5 +1,8 @@
 # Change Log:
 
+## 1.1.10
+ - Fix: Bad nmespace for Artifice_VisualElement_SlidingGroup caused conflicts with UnityEditor.Editor namespace.
+
 ## 1.1.9
  - Fix: Abstract List View would not apply attributes to children.
  - Fix: ChildGameObjectOnly would cause visual bug after list redraw.
