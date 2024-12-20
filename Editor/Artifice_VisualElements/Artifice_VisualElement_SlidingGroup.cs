@@ -1,10 +1,8 @@
-using ArtificeToolkit.Editor;
 using ArtificeToolkit.Editor.Artifice_CustomAttributeDrawers.CustomAttributeDrawers_Groups;
-using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEngine.UIElements.Experimental;
 
-namespace Editor.Artifice_VisualElements
+namespace ArtificeToolkit.Editor.VisualElements
 {
     /// <summary>
     /// This element provides a sliding container which is enabled or disabled by a button.
