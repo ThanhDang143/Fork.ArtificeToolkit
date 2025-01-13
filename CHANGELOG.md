@@ -1,4 +1,7 @@
 # Change Log:
+## 1.1.12
+ - Fix: Added support on ChildGameObjectOnly attributes to also work on list elements.   
+
 ## 1.1.11
  - Enhancement: Added SerializedDictionary to runtime which works with all serializable types. Works with a specialized custom property drawer inherting from AbstractListView.
  - Enhancement: Updated documentation to include extra features section.
