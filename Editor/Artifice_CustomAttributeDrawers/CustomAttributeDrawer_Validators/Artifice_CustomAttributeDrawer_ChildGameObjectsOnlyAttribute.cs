@@ -46,7 +46,15 @@ namespace ArtificeToolkit.Editor.Artifice_CustomAttributeDrawers.CustomAttribute
             {
                 // Get property type
                 var gameObject = ((Behaviour)property.serializedObject.targetObject).gameObject;
-                var searchType = property.GetTargetType();
+
+                Type searchType;
+                if (property.IsArrayElement())
+                {
+                    var parentProperty = property.FindParentProperty();
+                    searchType = parentProperty.GetTargetType().GetGenericArguments()[0];
+                }
+                else
+                    searchType = property.GetTargetType();
                 
                 // Get mouse position and set up position struct for editor window
                 var mousePos = GUIUtility.GUIToScreenPoint(Event.current.mousePosition);
@@ -74,10 +82,7 @@ namespace ArtificeToolkit.Editor.Artifice_CustomAttributeDrawers.CustomAttribute
             {
                 _propertyBoundAttemptsCounter++;
                 if (_propertyBoundAttemptsCounter == MaxPropertyBoundAttempts)
-                {
-                    Debug.LogWarning("[Artifice] Could not detect field selector field to hide it.");
                     return;
-                }
                 propertyField.schedule.Execute(_ => OnPropertyBoundGUI(property, propertyField));
             }
             else
@@ -88,7 +93,7 @@ namespace ArtificeToolkit.Editor.Artifice_CustomAttributeDrawers.CustomAttribute
 
         protected override bool IsApplicableToProperty(SerializedProperty property)
         {
-            return property.propertyType == SerializedPropertyType.ObjectReference && !property.IsArrayElement();
+            return property.propertyType == SerializedPropertyType.ObjectReference;
         }
         public override bool IsValid(SerializedProperty property)
         {

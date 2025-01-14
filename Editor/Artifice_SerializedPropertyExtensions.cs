@@ -495,7 +495,8 @@ namespace ArtificeToolkit.Editor
         /// <summary> Returns true if property is part of an array </summary>
         public static bool IsArrayElement(this SerializedProperty property)
         {
-            return property.propertyPath.Contains("Array");
+            var propertyParent = property.FindParentProperty();
+            return propertyParent != null && propertyParent.IsArray();
         } 
         
         /// <summary> Returns index of property in its array or -1 if its not in an array </summary>
