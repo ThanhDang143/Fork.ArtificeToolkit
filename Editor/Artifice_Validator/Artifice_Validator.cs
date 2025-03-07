@@ -1,16 +1,17 @@
     using System;
     using System.Collections;
     using System.Collections.Generic;
+    using System.IO;
     using System.Linq;
-    using ArtificeToolkit.Editor;
+    using ArtificeToolkit.Attributes;
     using Unity.EditorCoroutines.Editor;
     using UnityEditor;
+    using UnityEditor.SceneManagement;
     using UnityEngine;
     using UnityEngine.Events;
     using UnityEngine.SceneManagement;
-    using Object = UnityEngine.Object;
 
-    namespace Artifice_Editor
+    namespace ArtificeToolkit.Editor
     {
         public class Artifice_Validator : IDisposable
         {
@@ -19,15 +20,15 @@
             /// <summary> Logs structure for validators </summary>
             public struct ValidatorLog
             {
-                public readonly string message;
-                public readonly LogType logType;
-                public readonly Sprite sprite;
-                public readonly Object originObject;
-                public readonly string originLocationName;
-                public readonly Type originValidatorType;
+                public readonly string Message;
+                public readonly LogType LogType;
+                public readonly Sprite Sprite;
+                public readonly Component OriginComponent;
+                public readonly string OriginLocationName;
+                public readonly Type OriginValidatorType;
 
-                public readonly bool hasAutoFix;
-                public readonly Action autoFixAction;
+                public readonly bool HasAutoFix;
+                public readonly Action AutoFixAction;
                 
                 public ValidatorLog(
                     Sprite sprite,
@@ -35,21 +36,21 @@
                     LogType logType,
                     Type originValidatorType,
                     // Optional Parameters (Metadata)
-                    Object originObject = null,
+                    Component originComponent = null,
                     string originLocationName = "",
                     bool hasAutoFix = false,
                     Action autoFixAction = null
                 )
                 {
-                    this.sprite = sprite;
-                    this.message = message;
-                    this.logType = logType;
-                    this.originObject = originObject;
-                    this.originLocationName = originLocationName;
-                    this.originValidatorType = originValidatorType;
+                    Sprite = sprite;
+                    Message = message;
+                    LogType = logType;
+                    OriginComponent = originComponent;
+                    OriginLocationName = originLocationName;
+                    OriginValidatorType = originValidatorType;
 
-                    this.hasAutoFix = hasAutoFix;
-                    this.autoFixAction = hasAutoFix ? autoFixAction : null;
+                    HasAutoFix = hasAutoFix;
+                    AutoFixAction = hasAutoFix ? autoFixAction : null;
                 }
             }
 
@@ -76,7 +77,7 @@
 
                 public void IncreaseCount(ValidatorLog log)
                 {
-                    switch (log.logType)
+                    switch (log.LogType)
                     {
                         case LogType.Log:
                             ++comments;
@@ -92,22 +93,22 @@
                     }
 
                     // Add 0 if key does not exist
-                    if (scenesMap.ContainsKey(log.originLocationName))
-                        scenesMap[log.originLocationName] += 1;
+                    if (scenesMap.ContainsKey(log.OriginLocationName))
+                        scenesMap[log.OriginLocationName] += 1;
                     else
                     {
                         var copy = assetPathsMap.Keys.ToList(); 
                         foreach(var key in copy)
-                            if (log.originLocationName.Contains(key))
+                            if (log.OriginLocationName.Contains(key))
                                 assetPathsMap[key] += 1;
                     }
 
-                    if (validatorTypesMap.ContainsKey(log.originValidatorType.Name))
-                        validatorTypesMap[log.originValidatorType.Name] += 1;
+                    if (validatorTypesMap.ContainsKey(log.OriginValidatorType.Name))
+                        validatorTypesMap[log.OriginValidatorType.Name] += 1;
                 }
                 public void DecreaseCount(ValidatorLog log)
                 {
-                    switch (log.logType)
+                    switch (log.LogType)
                     {
                         case LogType.Log:
                             --comments;
@@ -122,18 +123,18 @@
                             break;
                     }
                     // Add 0 if key does not exist
-                    if (scenesMap.ContainsKey(log.originLocationName))
-                        scenesMap[log.originLocationName] -= 1;
+                    if (scenesMap.ContainsKey(log.OriginLocationName))
+                        scenesMap[log.OriginLocationName] -= 1;
                     else
                     {
                         var copy = assetPathsMap.Keys.ToList(); 
                         foreach(var key in copy)
-                            if (log.originLocationName.Contains(key))
+                            if (log.OriginLocationName.Contains(key))
                                 assetPathsMap[key] -= 1;
                     }
                     
-                    if (validatorTypesMap.ContainsKey(log.originValidatorType.Name))
-                        validatorTypesMap[log.originValidatorType.Name] -= 1;
+                    if (validatorTypesMap.ContainsKey(log.OriginValidatorType.Name))
+                        validatorTypesMap[log.OriginValidatorType.Name] -= 1;
                 }
                 
                 public void Reset()
@@ -154,7 +155,7 @@
             
             #region SINGLETON
             
-            private static Artifice_Validator instance = null;
+            private static Artifice_Validator _instance = null;
 
             private Artifice_Validator()
             {
@@ -164,11 +165,10 @@
             {
                 get
                 {
-                    if (instance == null)
-                    {
-                        instance = new Artifice_Validator();
-                    }
-                    return instance;
+                    if (_instance == null)
+                        _instance = new Artifice_Validator();
+
+                    return _instance;
                 }
             }
             
@@ -218,8 +218,8 @@
                 if (_config == null)
                 {
                     // Use as path the path of the editor window
-                    if (!System.IO.Directory.Exists(ConfigFolderPath))
-                        System.IO.Directory.CreateDirectory(ConfigFolderPath);
+                    if (!Directory.Exists(ConfigFolderPath))
+                        Directory.CreateDirectory(ConfigFolderPath);
                     
                     _config = (Artifice_SCR_ValidatorConfig)ScriptableObject.CreateInstance(typeof(Artifice_SCR_ValidatorConfig));
                     AssetDatabase.CreateAsset(_config, ConfigFolderPath + "/Default Validator Config.asset");
@@ -291,37 +291,51 @@
                 EditorCoroutineUtility.StartCoroutine(RefreshLogsCoroutine(true), this);
             }
             
-            /// <summary> Iterates every nested property of gameobject to detect <see cref="Abz_ValidatorAttribute"/> and logs their validity. </summary>
-            private IEnumerator RefreshLogsCoroutine(bool isBlocking = false)
+            /// <summary> Iterates every nested property of gameobject to detect <see cref="ValidatorAttribute"/> and logs their validity. </summary>
+            private IEnumerator RefreshLogsCoroutine(bool fullScan = false)
             {
                 _isRefreshing = true;
-                
+
+                var currentBatchCount = 0;
                 var batchSize = (int)_config.batchingPriority;
-                if (isBlocking)
+                if (fullScan)
                     batchSize = (int)Artifice_SCR_ValidatorConfig.BatchingPriority.Absolute;
                 
                 if (_logs == null)
                     throw new ArgumentException($"[{GetType()}] FilteredLogs not initialized properly.");
 
+                // Gather all root gameObjects.
+                var rootGameObjects = GetAllRootGameObjects();
+                
                 // Run validate for each module and add to list
                 _logs.Clear();
                 for(var i = 0; i < _validatorModules.Count; i++)
                 {
                     var module = _validatorModules[i];
+                    module.Reset();
                     
                     // Unless blocking search. skip on demand only modules
-                    if(module.OnDemandOnlyModule && isBlocking == false)
+                    if(module.OnFullScanOnly && fullScan == false)
                         continue;
                     
                     // If blocking, progress bar
-                    if(isBlocking)
+                    if(fullScan)
                         EditorUtility.DisplayProgressBar("Artifice Validator Scan", $"Running {module.GetType().Name}", (float)(i + 1) / (float)(_validatorModules.Count + 1));
                         
                     // Validate and add logs
-                    yield return module.ValidateCoroutine(batchSize);
+                    while (module.HasFinishedValidateCoroutine == false)
+                    {
+                        yield return module.ValidateCoroutine(rootGameObjects);
 
-                    var logs = module.Logs;
-                    _logs.AddRange(logs);
+                        // If we reached batch limit, pause flow. 
+                        if (++currentBatchCount > batchSize)
+                        {
+                            currentBatchCount = 0;
+                            yield return null;
+                        }
+                    }
+                    
+                    _logs.AddRange(module.Logs);
                 }
                 
                 // Refresh log counters.
@@ -333,7 +347,7 @@
                 _isRefreshing = false;
                 
                 // If method was called as blocking, do not change isRefreshing since its auto-refresh's job.
-                if(isBlocking)
+                if(fullScan)
                     EditorUtility.ClearProgressBar();
             }
             
@@ -378,5 +392,33 @@
             {
                 return _config;
             }
+            
+            #region Utility
+            
+            public static List<GameObject> GetAllRootGameObjects()
+            {
+                var rootGameObjects = new List<GameObject>();
+
+                // Check if we are in Prefab Mode
+                var prefabStage = PrefabStageUtility.GetCurrentPrefabStage(); 
+                if (prefabStage != null)
+                {
+                    rootGameObjects.Add(prefabStage.prefabContentsRoot);
+                    return rootGameObjects;
+                }
+
+                // If not in prefab stage, get root objects from all loaded scenes
+                var sceneCount = SceneManager.sceneCount;
+                for (var i = 0; i < sceneCount; i++)
+                {
+                    var scene = SceneManager.GetSceneAt(i);
+                    if (scene.isLoaded)
+                        rootGameObjects.AddRange(scene.GetRootGameObjects());
+                }
+
+                return rootGameObjects;
+            }
+            
+            #endregion
         }
     }
