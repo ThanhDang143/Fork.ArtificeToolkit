@@ -392,6 +392,32 @@ namespace ArtificeToolkit.Editor
             return list;
         }
         
+        /// <summary>
+        /// Sort the properties based on the SortAttribute order.
+        /// </summary>
+        public static List<SerializedProperty> SortProperties(this List<SerializedProperty> properties)
+        {
+            var sortOrderCache = new Dictionary<SerializedProperty, int>() ;
+            var needsSorting = false;
+
+            foreach (var property in properties)
+            {
+                if (property.name == "m_Script")
+                {
+                    sortOrderCache[property] = int.MinValue;
+                }
+                else
+                {
+                    var attributes = property.GetCustomAttributes();
+                    var sortAttribute = attributes?.FirstOrDefault(attr => attr is SortAttribute) as SortAttribute;
+                    sortOrderCache[property] = sortAttribute?.Order ?? 0;
+                    needsSorting = true;
+                }
+            }
+
+            return needsSorting ? properties.OrderBy(p => sortOrderCache[p]).ToList() : properties;
+        }
+        
         /// <summary> Returns the field info of a target object based on the path </summary>
         private static FieldInfo GetFieldNested(object target, string path)
         {
