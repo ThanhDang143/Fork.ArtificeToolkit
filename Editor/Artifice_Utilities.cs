@@ -1,10 +1,12 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using ArtificeToolkit.Editor.Artifice_CustomAttributeDrawers;
+using Unity.EditorCoroutines.Editor;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -67,6 +69,7 @@ namespace ArtificeToolkit.Editor
         private const string ArtificeInspectorOn = "Artifice Toolkit/" + "\u2712 Toggle ArtificeInspector/On";
         private const string ArtificeInspectorOff = "Artifice Toolkit/" +"\u2712 Toggle ArtificeInspector/Off";
         private const string ArtificeDocumentation = "Artifice Toolkit/" +"\ud83d\udcd6 Documentation...";
+        private const string ArtificeIgnoreList = "Artifice Toolkit/" + "\u2718 Preview Ignore List";
         private const string ArtificeDocumentationURL = "https://github.com/AbZorbaGames/artificetoolkit";
         
         [MenuItem(ArtificeInspectorOn, true, 0)]
@@ -103,6 +106,12 @@ namespace ArtificeToolkit.Editor
         private static void OpenArtificeDocumentationURL()
         {
             Application.OpenURL(ArtificeDocumentationURL);
+        }
+        
+        [MenuItem(ArtificeIgnoreList)]
+        private static void OpenArtificeIgnoreList()
+        {
+            Artifice_EditorWindow_IgnoreList.ShowWindow();
         }
         
         public static void ToggleArtificeDrawer(bool toggle)
@@ -146,8 +155,7 @@ namespace ArtificeToolkit.Editor
                 
                 if (hasChangedFile)
                 {
-                    // Empty selection, since it will have to be refocused anyway.
-                    Selection.objects = null;
+                    Selection.activeGameObject = null;
                     
                     // Change toggle and write/refresh.
                     ArtificeDrawerEnabled = toggle;
@@ -255,5 +263,25 @@ namespace ArtificeToolkit.Editor
                 _drawerMap[customDrawerAttribute.Type] = drawerType;
             }
         }
+        
+        #region Reselection Utility
+        
+        private IEnumerator OnNextFrame(Action action)
+        {
+            yield return null;
+            action.Invoke();
+        }
+
+        public static void TriggerNextFrameReselection()
+        {
+            var selection = Selection.objects;
+            Selection.objects = null;
+            EditorCoroutineUtility.StartCoroutine(Instance.OnNextFrame(() =>
+            {
+                Selection.objects = selection;
+            }), Instance);
+        }
+        
+        #endregion
     }
 }

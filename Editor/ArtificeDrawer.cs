@@ -29,8 +29,10 @@ namespace ArtificeToolkit.Editor
         private bool _disposed;
 
         // Cached results for custom attribute usage
-        private readonly Dictionary<SerializedProperty, bool> _isUsingCustomAttributesCache = new();
-        private readonly Dictionary<SerializedProperty, bool> _doChildrenUseCustomAttributesCache = new();
+        private readonly Dictionary<SerializedProperty, bool> _doesRequireVisualElementsCache = new();
+        
+        // Type cache for performance
+        private static readonly Dictionary<string, Type> TypeCache = new();
 
         /// <summary> Specific attributes are meant to be passed upon an array's children, and not affect the array itself. This is what this HashSet defines. </summary>
         public static readonly HashSet<Type> ArrayAppliedCustomAttributes;
@@ -107,6 +109,10 @@ namespace ArtificeToolkit.Editor
             // Create optional method buttons Foldout Group for serializedObject
             artificeInspector.Add(CreateMethodsGUI(serializedObject));
             
+            // Add artifice indicator if artifice has been used.
+            if (_doesRequireVisualElementsCache.Any(pair => pair.Value))
+                artificeInspector.Add(CreateArtificeIndicatorGUI(serializedObject));
+            
             // Apply any modified property
             serializedObject.ApplyModifiedProperties(); 
 
@@ -128,9 +134,6 @@ namespace ArtificeToolkit.Editor
 
             artificeContainer.styleSheets.Add(Artifice_Utilities.GetGlobalStyle()); // This propagates to all children.
             artificeContainer.styleSheets.Add(Artifice_Utilities.GetStyle(GetType())); // Supports
-
-            if (IsUsingCustomAttributes(serializedObject))
-                artificeContainer.Add(CreateArtificeIndicatorGUI(serializedObject));
             
             return artificeContainer;
         }
@@ -150,7 +153,7 @@ namespace ArtificeToolkit.Editor
             if (customAttributes != null && customAttributes.Any(attribute => attribute is ForceArtificeAttribute))
                 forceArtificeStyle = true;
 
-            if (ShouldUseArtificeEditorForProperty(property) || forceArtificeStyle)
+            if (forceArtificeStyle || DoesRequireArtificeRendering(property))
             {
                 // Arrays need to use custom Artifice List Views (and not a string value!)
                 if (property.IsArray())
@@ -235,7 +238,7 @@ namespace ArtificeToolkit.Editor
         public VisualElement CreateCustomAttributesGUI(SerializedProperty property, VisualElement propertyField)
         {
             var customAttributes = property.GetCustomAttributes();
-            if (IsUsingCustomAttributes(property) == false)
+            if (DoesRequireArtificeRendering(property) == false)
                 return propertyField;
 
             return CreateCustomAttributesGUI(property, propertyField, customAttributes.ToList());
@@ -350,7 +353,7 @@ namespace ArtificeToolkit.Editor
                 return new PropertyField(property);
             
             // Get all derived types and create string map for easy accessing.
-            var types = TypeCache.GetTypesDerivedFrom(baseType).OrderBy(type => type.Name).ToList();
+            var types = UnityEditor.TypeCache.GetTypesDerivedFrom(baseType).OrderBy(type => type.Name).ToList();
             var typeMap = new Dictionary<string, Type>();
             foreach (var type in types)
             {
@@ -533,96 +536,79 @@ namespace ArtificeToolkit.Editor
         }
         
         #region Utility Methods
-
+        
         public void SetSerializedPropertyFilter(SerializedPropertyFilter filter)
         {
             _serializedPropertyFilter = filter;
         }
         
-        /// <summary> Returns true if property directly or indirectly uses any custom attributes </summary>
-        private bool ShouldUseArtificeEditorForProperty(SerializedProperty property)
+        /// <summary> Checks property and its visible children. If any use custom attributes, this method returns true. False otherwise. </summary>
+        private bool DoesRequireArtificeRendering(SerializedProperty property)
         {
-            return IsUsingCustomAttributes(property) || DoChildrenUseCustomAttributes(property);
-        }
-        
-        /// <summary> Returns true if property directly or indirectly uses any custom attributes </summary>
-        private bool IsUsingCustomAttributes(SerializedObject serializedObject)
-        {
-            return serializedObject.GetIterator().GetVisibleChildren().Any(property => IsUsingCustomAttributes(property) || DoChildrenUseCustomAttributes(property));
+            if (_doesRequireVisualElementsCache.TryGetValue(property, out var cachedResult))
+                return cachedResult;
+            
+            // Check self
+            if (IsUsingCustomAttributesDirectly(property))
+            {
+                _doesRequireVisualElementsCache[property] = true;
+                return true;   
+            }
+
+            // Check children (no reason to skip as this check will be called for children as well).
+            foreach (var childProperty in property.GetVisibleChildren())
+            {
+                if (DoesRequireArtificeRendering(childProperty))
+                {
+                    _doesRequireVisualElementsCache[property] = true;
+                    return true;
+                }
+            }
+
+            _doesRequireVisualElementsCache[property] = false;
+            return false;
         }
         
         /// <summary> Returns true if the property is directly using any <see cref="CustomAttribute"/> </summary>
-        private bool IsUsingCustomAttributes(SerializedProperty property)
+        private bool IsUsingCustomAttributesDirectly(SerializedProperty property)
         {
-            if (_isUsingCustomAttributesCache.ContainsKey(property))
-                return _isUsingCustomAttributesCache[property];
-            
             // Check if property directly has a custom attribute
             var customAttributes = property.GetCustomAttributes();
-            if (customAttributes != null && customAttributes.Length > 0)
-            {
-                _isUsingCustomAttributesCache[property] = true;
+            if (customAttributes is { Length: > 0 })
                 return true;
-            }
             
+            if (property.IsArray() && property.arraySize == 0)
+            {
+                var typeName = property.arrayElementType.Replace("PPtr<$", "").Replace(">", "");
+
+                // Return cached if found. Otherwise search assemblies.
+                if (TypeCache.TryGetValue(typeName, out var arrayElementType) == false) 
+                {
+                    arrayElementType = AppDomain.CurrentDomain.GetAssemblies()
+                        .SelectMany(a => {
+                            try { return a.GetTypes(); } catch { return Array.Empty<Type>(); }
+                        })
+                        .FirstOrDefault(t => t.FullName == typeName || t.Name == typeName);
+
+                    TypeCache[typeName] = arrayElementType;
+                }
+
+                return arrayElementType != null && DoChildrenOfTypeUseCustomAttributes(arrayElementType);
+            }
+
+            
+            // Otherwise, maybe some method of the object uses custom attributes.
             var obj = property.GetTarget<object>();
             if (obj != null)
             {
                 foreach(var method in obj.GetType().GetMethods())
                     if (method.GetCustomAttributes().Any(attribute => attribute is CustomAttribute))
                     {
-                        _isUsingCustomAttributesCache[property] = true;
+                        _doesRequireVisualElementsCache[property] = true;
                         return true;
                     }
             }
           
-            return false;
-        }
-
-        /// <summary> Returns true if any nested child is using any <see cref="CustomAttribute"/> </summary>
-        private bool DoChildrenUseCustomAttributes(SerializedProperty property)
-        {
-            if (_doChildrenUseCustomAttributesCache.ContainsKey(property))
-                return _doChildrenUseCustomAttributesCache[property];
-
-            if (property.serializedObject.targetObject == null)
-                return false;
-            
-            // No point if no children and not array
-            if (!property.hasVisibleChildren)
-                return false;
-            
-            // Special case were property is array and empty
-            if (property.IsArray() && property.arraySize == 0)
-            {
-                var arrayElementTypeString = property.arrayElementType;
-
-                // Extracting the type name
-                var typeName = arrayElementTypeString.Replace("PPtr<$", "").Replace(">", "");
-
-                // Finding the type using reflection through all assemblies
-                var arrayElementType = AppDomain.CurrentDomain.GetAssemblies()
-                    .SelectMany(assembly => assembly.GetTypes())
-                    .FirstOrDefault(type => type.FullName == typeName || type.Name == typeName);
-
-                return arrayElementType != null && DoChildrenOfTypeUseCustomAttributes(arrayElementType);
-            }
-            
-            // Otherwise, check ALL children
-            foreach (var visibleChild in property.GetVisibleChildren())
-            {
-                // If property is array skip the size property when determining artifice usage.
-                if(property.propertyType == SerializedPropertyType.ArraySize)
-                    continue;
-                
-                if (ShouldUseArtificeEditorForProperty(visibleChild))
-                {
-                    _doChildrenUseCustomAttributesCache[property] = true;
-                    return true;
-                }
-            }
-            
-            _doChildrenUseCustomAttributesCache[property] = false;
             return false;
         }
         
@@ -724,8 +710,7 @@ namespace ArtificeToolkit.Editor
                 while (_disposableStack.Count > 0)
                     _disposableStack.Pop().Dispose();
 
-                _isUsingCustomAttributesCache.Clear();
-                _doChildrenUseCustomAttributesCache.Clear();
+                _doesRequireVisualElementsCache.Clear();
             }
 
             _disposed = true;
