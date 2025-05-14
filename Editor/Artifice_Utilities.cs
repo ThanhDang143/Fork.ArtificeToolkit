@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using ArtificeToolkit.Editor.Artifice_CustomAttributeDrawers;
+using ArtificeToolkit.Editor.Resources;
 using Unity.EditorCoroutines.Editor;
 using UnityEditor;
 using UnityEngine;
@@ -263,6 +264,15 @@ namespace ArtificeToolkit.Editor
                 _drawerMap[customDrawerAttribute.Type] = drawerType;
             }
         }
+        
+        /// <summary> Returns a sprite based on UnityEngine.LogType parameter. </summary>
+        public static Sprite LogIconFromType(LogType logType) =>
+            logType switch
+            {
+                LogType.Log     => Artifice_SCR_CommonResourcesHolder.instance.CommentIcon,
+                LogType.Warning => Artifice_SCR_CommonResourcesHolder.instance.WarningIcon,
+                _               => Artifice_SCR_CommonResourcesHolder.instance.ErrorIcon
+            };
         
         #region Reselection Utility
         
