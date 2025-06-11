@@ -12,7 +12,7 @@ pipeline {
     }
 
     environment {
-        // Path to the directory containing package.json
+        // Path to the directory containing package.json 
         PROJECT_PATH = ""
 
         // Verdaccio registry URL
