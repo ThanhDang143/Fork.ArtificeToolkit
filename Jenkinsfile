@@ -120,9 +120,8 @@ pipeline {
 
                             // Configure .npmrc for Verdaccio registry & auth token
                             bat "echo @thanhdv:registry=${env.VERDACCIO_REGISTRY_URL} > .npmrc"
-                            bat "echo ${registryHostPath}:_auth=\"${encodedAuth}\" > .npmrc"
+                            bat "echo ${registryHostPath}:_auth=\"${encodedAuth}\" >> .npmrc"
                             bat "echo @com.unity:registry=https://packages.unity.com >> .npmrc"
-                            bat "echo registry=${env.VERDACCIO_REGISTRY_URL} >> .npmrc"
                             echo ".npmrc configured."
                         }
 
